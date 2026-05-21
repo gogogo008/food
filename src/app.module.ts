@@ -8,6 +8,8 @@ import { User } from './entities/user.entity';
 import { MealLog } from './entities/meal-log.entity';
 import { Recipe } from './entities/recipe.entity';
 import { UserPhysicalInfo } from './entities/user-physical-info.entity';
+import { Ingredient } from './entities/ingredient.entity';
+import { CookingTool } from './entities/cooking-tool.entity';
 
 @Module({
   imports: [
@@ -19,8 +21,8 @@ import { UserPhysicalInfo } from './entities/user-physical-info.entity';
       username: process.env.DB_USER,
       password: process.env.DB_PASSWORD,
       database: process.env.DB_NAME,
-      entities: [User, MealLog, Recipe,UserPhysicalInfo],
-      synchronize: false, 
+      entities: [User, MealLog, Recipe,UserPhysicalInfo,Ingredient, CookingTool],
+      synchronize: true, 
     }),DietModule, ConfigModule.forRoot(), ],
   controllers: [AppController],
   providers: [AppService],

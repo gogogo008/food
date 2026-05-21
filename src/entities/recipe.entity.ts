@@ -1,15 +1,20 @@
+// src/entities/recipe.entity.ts
 import { 
   Entity, 
   PrimaryGeneratedColumn, 
   Column, 
   ManyToMany, 
   ManyToOne, 
+  OneToMany, // 💡 추가됨
+  CreateDateColumn, // 💡 추가됨
+  UpdateDateColumn, // 💡 추가됨
   JoinTable, 
   JoinColumn 
 } from 'typeorm';
 import { User } from './user.entity';
 import { Ingredient } from './ingredient.entity';
 import { CookingTool } from './cooking-tool.entity';
+import { RecipeStep } from './recipe-step.entity'; // 💡 추가됨
 
 @Entity('Recipes')
 export class Recipe {
@@ -19,8 +24,8 @@ export class Recipe {
   @Column()
   title!: string;
 
-  @Column({ type: 'text' })
-  content!: string;
+  @Column({ type: 'text', nullable: true })
+  content!: string; // 레시피 전체 소개글 
 
   @Column({ nullable: true })
   video_url!: string;
@@ -31,22 +36,33 @@ export class Recipe {
   @Column({ default: 0 })
   likes_count!: number;
 
-  // 1. 작성자 관계 (User 엔티티의 myRecipes와 연결)
+  // 🔥 1. 인스타 피드 정렬을 위한 시간 기록 컬럼 추가
+  @CreateDateColumn()
+  created_at!: Date; // 생성일 (최신순 정렬용)
+
+  @UpdateDateColumn()
+  updated_at!: Date; // 수정일
+
+  // 🔥 2. 요리 상세 순서 관계 추가 (1:N)
+  @OneToMany(() => RecipeStep, (step) => step.recipe, { cascade: true })
+  steps!: RecipeStep[];
+
+  // 3. 작성자 관계
   @ManyToOne(() => User, (user) => user.myRecipes)
-  @JoinColumn({ name: 'creator_id' }) // DB 컬럼명을 creator_id로 설정
+  @JoinColumn({ name: 'creator_id' }) 
   creator!: User;
 
-  // 2. 좋아요 관계 (User 엔티티의 likedRecipes와 연결)
+  // 4. 좋아요 관계
   @ManyToMany(() => User, (user) => user.likedRecipes)
   @JoinTable({ name: 'User_Likes_Recipes' }) 
   likedByUsers!: User[];
 
-  // 3. 재료 태그 관계 (Ingredient 엔티티의 recipes와 연결)
+  // 5. 재료 태그 관계
   @ManyToMany(() => Ingredient, (ingredient) => ingredient.recipes)
   @JoinTable({ name: 'Recipe_Ingredients_Map' })
   ingredients!: Ingredient[];
 
-  // 4. 조리기구 태그 관계 (CookingTool 엔티티의 recipes와 연결)
+  // 6. 조리기구 태그 관계
   @ManyToMany(() => CookingTool, (tool) => tool.recipes)
   @JoinTable({ name: 'Recipe_Tools_Map' })
   cooking_tools!: CookingTool[];

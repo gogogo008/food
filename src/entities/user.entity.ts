@@ -19,8 +19,15 @@ export class User {
   @Column({ type: 'float', nullable: true })
   goal_calories!: number;
 
-  @Column({ type: 'json', nullable: true })
-  goal_macros!: { c: number; p: number; f: number };
+ @Column({ type: 'json', nullable: true })
+  goal_macros!: { 
+    c: number; 
+    p: number; 
+    f: number;
+    fiber: number;  // 식이섬유 추가
+    sugar: number;  // 당류 추가
+    sodium: number; // 나트륨 추가
+  };
 
   @OneToOne(() => UserPhysicalInfo, (physical) => physical.user)
   physicalInfo!: UserPhysicalInfo;
