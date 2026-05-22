@@ -20,7 +20,8 @@ export class DietService {
     this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
   }
 
-// 1. 음식 이미지 분석 (Type Error 완벽 해결 및 1인분 환산 버전)
+
+ // 1. 음식 이미지 분석
   async analyzeFoodImage(imageBuffer: Buffer) {
     try {
       const model = this.genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
@@ -35,38 +36,36 @@ export class DietService {
       const prompt = "사진 속의 음식이 무엇인지 알려줘. 대답은 '음식명'만 짧게 해줘. 예: 제육볶음";
       const result = await model.generateContent([prompt, imagePart]);
       const response = await result.response;
-      const aiFoodName = response.text().trim();
-
+      const aiFoodName = response.text().trim(); // 예: "육회"
 
       const allFoodCount = await this.foodRepository.count();
-console.log('현재 DB에 저장된 총 음식 개수:', allFoodCount);
-      // AI가 맞춘 음식을 DB에서 검색
+      console.log('현재 DB에 저장된 총 음식 개수:', allFoodCount);
+
+      // 제미나이가 준 이름으로 DB의 'dish_name' 컬럼을 검색합니다.
       const matchedFood = await this.foodRepository.createQueryBuilder('food')
-        .where('food.name LIKE :name', { name: `%${aiFoodName}%` })
+        .where('food.dish_name = :name', { name: aiFoodName })
         .getOne();
 
-      // 💡 해결 포인트 2 & 3: 타입을 명시적으로 지정하여 'null' 또는 'never' 에러 방지
       let finalFood: any = null;
       let candidates: any[] = [];
 
-      // 💡 100g/ml 기준 영양성분을 1인분(예: 250g) 기준으로 변환해 주는 내부 헬퍼 함수
-      const convertToServing = (food: Food) => {
-        // DB의 영양성분함량기준량은 대개 100g 또는 100ml입니다.
-        // 일반적인 성인 1인분 정량을 약 250g(2.5배)으로 가정하고 연산합니다.
+      //실제 DB 컬럼 구조(dish_id, dish_name, sugar_g, fiber_g, sodium_mg)에 맞추어 매핑
+      const convertToServing = (food: any) => {
         const defaultServingSize = 250; 
         const ratio = defaultServingSize / 100; // 2.5배 비율 곱하기
 
         return {
-          id: food.id,
-          name: food.name,
-          servingSize: defaultServingSize, // 프론트엔드에게 보낼 1인분 정량 가이드 (250g)
-          calories: Math.round(food.calories * ratio),
-          carbs: Math.round(food.carbs * ratio),
-          protein: Math.round(food.protein * ratio),
-          fat: Math.round(food.fat * ratio),
-          sugar: Math.round((food.sugar || 0) * ratio),
-          fiber: Math.round((food.fiber || 0) * ratio),
-          sodium: Math.round((food.sodium || 0) * ratio),
+          // 프론트엔드가 받는 인터페이스(id, name) 구조는 유지하되, DB 데이터는 실제 컬럼명으로 찌릅니다.
+          id: food.dish_id, 
+          name: food.dish_name, 
+          servingSize: defaultServingSize, 
+          calories: Math.round((food.calories || 0) * ratio),
+          carbs: Math.round((food.carbs || 0) * ratio),
+          protein: Math.round((food.protein || 0) * ratio),
+          fat: Math.round((food.fat || 0) * ratio),
+          sugar: Math.round((food.sugar || 0) * ratio),     
+          fiber: Math.round((food.fiber || 0) * ratio),     
+          sodium: Math.round((food.sodium || 0) * ratio),   
         };
       };
 
@@ -74,9 +73,9 @@ console.log('현재 DB에 저장된 총 음식 개수:', allFoodCount);
         // 매칭된 음식을 1인분 기준으로 변환
         finalFood = convertToServing(matchedFood);
 
-        // 유사 칼로리대 주변 후보군 4개 추출 및 1인분 환산
+        // 주변 후보군을 뽑을 때도 'dish_id'를 기준으로 제외하도록 변경
         const dbCandidates = await this.foodRepository.createQueryBuilder('food')
-          .where('food.id != :id', { id: matchedFood.id })
+          .where('food.dish_id != :id', { id: matchedFood.dish_id })
           .orderBy('ABS(food.calories - :cal)', 'ASC')
           .setParameter('cal', matchedFood.calories)
           .take(4)
@@ -94,7 +93,7 @@ console.log('현재 DB에 저장된 총 음식 개수:', allFoodCount);
 
       return {
         success: true,
-        foodName: finalFood ? finalFood.name : aiFoodName, // 💡 이제 정상 인식됩니다!
+        foodName: aiFoodName, 
         matchedFoodInfo: finalFood, // AI가 정확히 매칭한 음식 정보 (없으면 null)
         candidates: candidates,     // 대안 카드용 후보 리스트 (항상 4개 존재)
         message: finalFood ? '음식 매칭에 성공했습니다!' : '일치하는 DB 음식을 찾지 못해 추천 후보를 제공합니다.',
@@ -234,7 +233,7 @@ console.log('현재 DB에 저장된 총 음식 개수:', allFoodCount);
     };
   }
 
-  // =========================================================================
+// =========================================================================
   // AI 지침 가중치 기반 실시간 맞춤 음식 DB 추천 알고리즘
   // =========================================================================
   async recommendFoods(userId: string) {
@@ -282,9 +281,9 @@ console.log('현재 DB에 저장된 총 음식 개수:', allFoodCount);
       return acc;
     }, { carbs: 0, protein: 0, fat: 0, sugar: 0, fiber: 0, sodium: 0 });
 
-    // 4. Gemini AI에게 데이터를 주고 최적의 영양 밸런스 가중치 도출 요청 (JSON 강제)
+  
     const model = this.genAI.getGenerativeModel({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-2.5-flash-lite', 
       generationConfig: { responseMimeType: 'application/json' },
     });
 
@@ -315,21 +314,23 @@ console.log('현재 DB에 저장된 총 음식 개수:', allFoodCount);
     // 5. AI가 준 가중치를 스코어링 수식으로 만들어 실시간 DB(Food) 기획 연산 쿼리 수행
     const recommendedFoods = await this.foodRepository.createQueryBuilder('food')
       .select('food')
+      // 🎯 [체크 포인트 2] 컬럼명 오류 수정 (food.protein -> food.protein_g 등 기존 DB 테이블 구조에 맞춤)
+      // 🎯 [체크 포인트 3] 나트륨 연산 에러 해결을 위해 food.sodium_mg 뒤에 ::float 형변환 추가
       .addSelect(
-        `(food.protein * :pW + food.carbs * :cW + food.fat * :fW + food.fiber * :fibW + food.sugar * :sugW + food.sodium * :sodW)`,
+        `(food.protein_g * :pW + food.carbs_g * :cW + food.fat_g * :fW + food.fiber_g * :fibW + food.sugar_g * :sugW + food.sodium_mg::float * :sodW)`,
         'score'
       )
-      .where('food.calories <= :maxCal', { maxCal: remainingCalories }) // 남은 칼로리 내에서 해결 가능한 음식만
+      .where('food.calories <= :maxCal', { maxCal: remainingCalories }) 
       .setParameters({
         pW: aiData.p_weight,
         cW: aiData.c_weight,
         fW: aiData.f_weight,
         fibW: aiData.fib_weight,
         sugW: aiData.sug_weight,
-        sodW: aiData.sod_weight / 100, // 나트륨 단위(mg) 보정용 나눗셈
+        sodW: aiData.sod_weight / 100, 
       })
       .orderBy('score', 'DESC')
-      .take(3) // 최적의 맞춤 음식 3개 선택
+      .take(3) 
       .getMany();
 
     return {
@@ -338,7 +339,6 @@ console.log('현재 DB에 저장된 총 음식 개수:', allFoodCount);
       recommendedFoods: recommendedFoods,
     };
   }
-
   // =========================================================================
   // 주간 식단 기반 AI 종합 분석 요약 리포트/코멘트 발행
   // =========================================================================
@@ -370,7 +370,7 @@ console.log('현재 DB에 저장된 총 음식 개수:', allFoodCount);
     ).join('\n');
 
     // 3. Gemini 모델을 호출하여 전문적인 영양 코멘트 리포트 작성 요청
-    const model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = this.genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
     const prompt = `
       당신은 친절하고 전문적인 AI 피트니스 헬스 영양사입니다. 
       유저가 일주일간 기록한 아래의 식단 성분 리스트를 면밀히 분석하여 주간 건강 리포트(코멘트)를 작성해 주세요.
