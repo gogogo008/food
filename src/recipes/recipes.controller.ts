@@ -2,6 +2,7 @@
 import { Controller, Post, Get, Body, Param, Query, HttpCode, HttpStatus } from '@nestjs/common';
 import { RecipesService } from './recipes.service';
 import { CreateRecipeDto } from '../Dto/create-recipe.dto';
+import { YoutubeRecipeDto } from '../Dto/youtube-recipe.dto';
 
 @Controller('recipes')
 export class RecipesController {
@@ -29,7 +30,10 @@ export class RecipesController {
     
     return await this.recipesService.findAll(search, ingredientList, excludeToolList);
   }
-
+ @Post('api/youtube/create')
+  async createByYoutube(@Body() dto: YoutubeRecipeDto) {
+    return await this.recipesService.createRecipeFromYoutube(dto.userId, dto.videoUrl);
+  }
   // 3. 레시피 상세 조회 (음성인식 스텝 카드용)
   @Get(':id')
   async getRecipeDetail(@Param('id') id: number) {
@@ -46,12 +50,5 @@ export class RecipesController {
     return await this.recipesService.toggleLike(id, userId);
   }
 
-  @Post('youtube')
-  async createByYoutube(
-    @Body('videoUrl') videoUrl: string,
-    @Body('userId') userId: string, 
-  ) {
-    // 이제 포스트맨에서 videoUrl과 userId를 같이 보내주시면 됩니다.
-    return await this.recipesService.createRecipeFromYoutube(userId, videoUrl);
-  }
+  
 }
