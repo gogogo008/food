@@ -12,10 +12,10 @@ async function bootstrap() {
   });
 
   // 포트 번호 설정 (기본 3000번)
-  const port = process.env.PORT ?? 3000;
-  await app.listen(port);
+  await app.listen(3000);
+  console.log(`🚀 서버가 3000번 포트에서 정상 가동 중입니다!`);
   
   console.log(`🚀 백엔드 서버가 시작되었습니다!`);
-  console.log(`📍 주소: http://localhost:${port}`);
+  //console.log(`📍 주소: http://localhost:${port}`);
 }
 bootstrap();

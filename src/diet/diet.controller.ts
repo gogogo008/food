@@ -29,6 +29,7 @@ export class DietController {
   }
 
   // 3. 홈 화면 대시보드 통합 데이터 조회 API 
+  @Get('dashboard/:userId') // 
   async getHomeDashboard(@Param('userId') userId: string) {
     return await this.dietService.getHomeDashboard(userId);
   }
@@ -44,5 +45,21 @@ export class DietController {
       throw new BadRequestException('조회할 시작일(startDate)과 종료일(endDate)을 입력해주세요.');
     }
     return await this.dietService.getDietHistory(userId, startDate, endDate);
+  }
+
+  // =========================================================================
+  // 5. AI 지침 가중치 기반 맞춤 음식 DB 추천 API
+  // =========================================================================
+  @Get('recommend/:userId')
+  async getAiRecommendations(@Param('userId') userId: string) {
+    return await this.dietService.recommendFoods(userId);
+  }
+
+  // =========================================================================
+  //  6. 주간 식단 AI 성적표 리포트 코멘트 조회 API
+  // =========================================================================
+  @Get('report/weekly/:userId')
+  async getWeeklyReport(@Param('userId') userId: string) {
+    return await this.dietService.getWeeklyAiReport(userId);
   }
 }

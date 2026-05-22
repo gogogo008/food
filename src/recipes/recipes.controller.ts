@@ -45,4 +45,13 @@ export class RecipesController {
   ) {
     return await this.recipesService.toggleLike(id, userId);
   }
+
+  @Post('youtube')
+  async createByYoutube(
+    @Body('videoUrl') videoUrl: string,
+    @Body('userId') userId: string, 
+  ) {
+    // 이제 포스트맨에서 videoUrl과 userId를 같이 보내주시면 됩니다.
+    return await this.recipesService.createRecipeFromYoutube(userId, videoUrl);
+  }
 }
