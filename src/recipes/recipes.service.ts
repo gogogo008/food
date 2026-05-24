@@ -8,7 +8,7 @@ import { Ingredient } from '../entities/ingredient.entity';
 import { CookingTool } from '../entities/cooking-tool.entity';
 import { CreateRecipeDto } from '../Dto/create-recipe.dto';
 import { YoutubeTranscript } from 'youtube-transcript';
-import { GoogleGenerativeAI } from '@google/generative-ai'; // 💡 최신 패키지 명칭으로 고정
+import { GoogleGenerativeAI } from '@google/generative-ai'; 
 
 @Injectable()
 export class RecipesService {
@@ -28,10 +28,6 @@ export class RecipesService {
 
 // 유튜브 URL 기반 레시피 자동 생성 및 등록 (오류 추적용 버전)
   async createRecipeFromYoutube(userId: string, videoUrl: string) {
-    console.log("==================================================");
-    console.log("🚀 [단계 1] 유튜브 API 진입 성공!");
-    console.log("입력된 데이터 -> userId:", userId, " | videoUrl:", videoUrl);
-    console.log("==================================================");
 
     try {
       const user = await this.userRepository.findOne({ where: { id: userId } });
@@ -59,7 +55,6 @@ export class RecipesService {
       if (!this.ai) throw new BadRequestException('Gemini API 키 설정이 누락되었습니다.');
 
       // 3. Gemini AI에게 요약 요청
-      console.log("🤖 [단계 3] Gemini AI 호출 시도 중...");
       const model = this.ai.getGenerativeModel({ 
         model: 'gemini-2.5-flash-lite',
         generationConfig: { responseMimeType: 'application/json' } 
@@ -120,11 +115,7 @@ const prompt = `
 
       const result = await model.generateContent(prompt);
       const responseText = result.response.text();
-      
-      console.log("==================================================");
-      console.log("🔥 [단계 4] AI가 실제로 뱉은 실물 데이터 원본:");
-      console.log(responseText);
-      console.log("==================================================");
+
 
       // AI가 준 JSON 텍스트를 실제 객체로 변환
       let aiData: any;
@@ -148,20 +139,11 @@ const prompt = `
         steps: aiData.steps || [],
       };
 
-      console.log("📦 [단계 5] 매핑 완료된 mockDto 생성 성공!");
-      console.log("최종 투입 직전 DTO 상태:", JSON.stringify(mockDto, null, 2));
-
-      console.log("💾 [단계 6]this.createRecipe() 실행합니다...");
       return await this.createRecipe(userId, mockDto);
 
     } catch (finalError: any) {
-      // 🔥 어떤 단계에서 터지든 무조건 여기에 걸려서 콘솔에 진짜 원인이 찍힙니다.
-      console.log("==================================================");
-      console.log("🚨🚨🚨 최종 에러 감지! 추적 로그 확인 🚨🚨🚨");
+    
       console.error(finalError);
-      console.log("==================================================");
-      
-      // 원래 에러 그대로 다시 던져서 프론트에 전달
       throw finalError;
     }
   }

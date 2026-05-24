@@ -1,7 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, OneToOne, OneToMany, ManyToMany } from 'typeorm';
 import { UserPhysicalInfo } from './user-physical-info.entity';
 import { Recipe } from './recipe.entity';
-
+import { Supplement } from './supplement.entity';
 @Entity('Users')
 export class User {
   @PrimaryGeneratedColumn('uuid')
@@ -29,7 +29,7 @@ export class User {
     sodium: number; 
   };
 
-  // 💡 문자열 방식으로 대상을 명확히 명시합니다.
+  
   @OneToOne('UserPhysicalInfo', 'user')
   physicalInfo!: UserPhysicalInfo;
 
@@ -38,4 +38,7 @@ export class User {
 
   @ManyToMany(() => Recipe, (recipe) => recipe.likedByUsers)
   likedRecipes!: Recipe[];
+
+  @OneToMany(() => Supplement, (supplement) => supplement.creator)
+  supplements!: Supplement[];
 }
