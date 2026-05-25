@@ -127,13 +127,14 @@ async createRecipeFromYoutube(userId: string, videoUrl: string) {
       const thumbnailImg = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
 
       // 5. DTO 매핑
-     const mockDto: CreateRecipeDto & { nutrients?: any } = {
+    const mockDto: CreateRecipeDto = {
         title: aiData.title,
         content: aiData.content,
         thumbnail_img: thumbnailImg,
-        ingredients: aiData.ingredients || [],
+        ingredients: aiData.ingredients ? aiData.ingredients.map((i: any) => i.name) : [], 
         cooking_tools: aiData.cooking_tools || [],
         steps: aiData.steps || [],
+        // 새로 추가한 DTO 속성에 규격 맞춰 바인딩
         nutrients: aiData.info?.nutrients || { calories: 0, carbs: 0, protein: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0 }
       };
 

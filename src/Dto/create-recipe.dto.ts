@@ -15,7 +15,35 @@ export class RecipeStepDto {
   @IsOptional()
   step_img?: string;
 }
+export class NutrientsDto {
+  @IsNumber()
+  @IsNotEmpty()
+  calories!: number;
 
+  @IsNumber()
+  @IsNotEmpty()
+  carbs!: number;
+
+  @IsNumber()
+  @IsNotEmpty()
+  protein!: number;
+
+  @IsNumber()
+  @IsNotEmpty()
+  fat!: number;
+
+  @IsNumber()
+  @IsNotEmpty()
+  fiber!: number;
+
+  @IsNumber()
+  @IsNotEmpty()
+  sugar!: number;
+
+  @IsNumber()
+  @IsNotEmpty()
+  sodium!: number;
+}
 export class CreateRecipeDto {
   @IsString()
   @IsNotEmpty()
@@ -41,4 +69,9 @@ export class CreateRecipeDto {
   @IsArray()
   @IsString({ each: true })
   cooking_tools!: string[]; // 예: ["에어프라이어", "전자레인지"]
+  
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => NutrientsDto)
+  nutrients?: NutrientsDto;
 }
