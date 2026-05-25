@@ -34,6 +34,10 @@ export class RecipesController {
   async createByYoutube(@Body() dto: YoutubeRecipeDto) {
     return await this.recipesService.createRecipeFromYoutube(dto.userId, dto.videoUrl);
   }
+  @Get('top3')
+  async getTop3Recipes() {
+    return await this.recipesService.findTop3();
+  }
   // 3. 레시피 상세 조회 (음성인식 스텝 카드용)
   @Get(':id')
   async getRecipeDetail(@Param('id') id: number) {
@@ -49,6 +53,5 @@ export class RecipesController {
   ) {
     return await this.recipesService.toggleLike(id, userId);
   }
-
   
 }

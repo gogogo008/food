@@ -5,16 +5,16 @@ import {
   Column, 
   ManyToMany, 
   ManyToOne, 
-  OneToMany, // 💡 추가됨
-  CreateDateColumn, // 💡 추가됨
-  UpdateDateColumn, // 💡 추가됨
+  OneToMany,
+  CreateDateColumn,
+  UpdateDateColumn,
   JoinTable, 
   JoinColumn 
 } from 'typeorm';
 import { User } from './user.entity';
 import { Ingredient } from './ingredient.entity';
 import { CookingTool } from './cooking-tool.entity';
-import { RecipeStep } from './recipe-step.entity'; // 💡 추가됨
+import { RecipeStep } from './recipe-step.entity';
 
 @Entity('Recipes')
 export class Recipe {
@@ -66,4 +66,27 @@ export class Recipe {
   @ManyToMany(() => CookingTool, (tool) => tool.recipes)
   @JoinTable({ name: 'Recipe_Tools_Map' })
   cooking_tools!: CookingTool[];
+
+  @Column({ type: 'boolean', default: false })
+  is_public!: boolean; // false: 비공개(나만 보기), true: 전체 공개
+  @Column({ type: 'float', default: 0 })
+  calories!: number; // 칼로리 (kcal)
+
+  @Column({ type: 'float', default: 0 })
+  carbs!: number; // 탄수화물 (g)
+
+  @Column({ type: 'float', default: 0 })
+  protein!: number; // 단백질 (g)
+
+  @Column({ type: 'float', default: 0 })
+  fat!: number; // 지방 (g)
+
+  @Column({ type: 'float', default: 0 })
+  fiber!: number; // 식이섬유 (g)
+
+  @Column({ type: 'float', default: 0 })
+  sugar!: number; // 당류 (g)
+
+  @Column({ type: 'float', default: 0 })
+  sodium!: number; // 나트륨 (mg)
 }
