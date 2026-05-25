@@ -19,6 +19,7 @@ import { RecipeStep } from './entities/recipe-step.entity';
 import { UserPhysicalInfo } from './entities/user-physical-info.entity'; 
 import { Ingredient } from './entities/ingredient.entity';
 import { CookingTool } from './entities/cooking-tool.entity';
+import { Supplement } from './entities/supplement.entity';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { CookingTool } from './entities/cooking-tool.entity';
         RecipeStep, 
         Ingredient,
         CookingTool,
+        Supplement,
       ],
       synchronize: true, // 개발용 자동 테이블 생성 및 동기화
     }),
@@ -50,7 +52,8 @@ import { CookingTool } from './entities/cooking-tool.entity';
     AuthModule,    
     DietModule,    
     RecipesModule, 
-    UsersModule,   
+    UsersModule,
+       
   ],
   controllers: [AppController],
   providers: [AppService],
