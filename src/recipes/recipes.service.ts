@@ -8,6 +8,7 @@ import { Ingredient } from '../entities/ingredient.entity';
 import { CookingTool } from '../entities/cooking-tool.entity';
 import { CreateRecipeDto } from '../Dto/create-recipe.dto';
 import { GoogleGenerativeAI } from '@google/generative-ai'; 
+import { YoutubeTranscript } from 'youtube-transcript';
 
 @Injectable()
 export class RecipesService {
@@ -26,124 +27,84 @@ export class RecipesService {
   }
 
 async createRecipeFromYoutube(userId: string, videoUrl: string) {
+  try {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('유저를 찾을 수 없습니다.');
+
+    const videoId = this.extractYoutubeVideoId(videoUrl);
+    if (!videoId) throw new BadRequestException('올바른 유튜브 URL이 아닙니다.');
+
+    if (!this.ai) throw new BadRequestException('Gemini API 키 설정이 누락되었습니다.');
+
+    // ─── [핵심 수정] 백엔드에서 유튜브 자막 텍스트 직접 추출 ───
+    let transcriptText = '';
     try {
-      const user = await this.userRepository.findOne({ where: { id: userId } });
-      if (!user) throw new NotFoundException('유저를 찾을 수 없습니다.');
+      console.log("🔍 유튜브에서 자막 데이터를 가져오는 중...");
+      const transcriptObj = await YoutubeTranscript.fetchTranscript(videoUrl, { lang: 'ko' }); // 한국어 자막 우선
+      transcriptText = transcriptObj.map(t => t.text).join(' ');
+    } catch (transcriptError) {
+      console.error("⚠️ 자막 추출 실패:", transcriptError);
+      throw new BadRequestException('유튜브 영상에서 자막을 추출할 수 없습니다. (자막이 없는 영상이거나 차단됨)');
+    }
 
-      const videoId = this.extractYoutubeVideoId(videoUrl);
-      if (!videoId) throw new BadRequestException('올바른 유튜브 URL이 아닙니다.');
+    const model = this.ai.getGenerativeModel({ 
+      model: 'gemini-2.5-flash-lite',
+      generationConfig: { responseMimeType: 'application/json' } 
+    });
 
-      if (!this.ai) throw new BadRequestException('Gemini API 키 설정이 누락되었습니다.');
+    // ─── 프롬프트에 실제 자막 데이터 주입 ───
+    const prompt = `
+      다음 제공되는 유튜브 영상의 실제 자막 텍스트를 기반으로 요리 레시피를 정밀하게 분석해 주세요.
+      절대 가짜 데이터를 지어내지 말고, 오직 제공된 [자막 내용]만 바탕으로 정제해야 합니다.
 
-      // 1. Gemini 모델 설정
-      const model = this.ai.getGenerativeModel({ 
-        model: 'gemini-2.5-flash-lite',
-        generationConfig: { responseMimeType: 'application/json' } 
-      });
-
-      // 2. 프롬프트 구성 (유튜브 URL을 본문에 직접 포함시켜 분석하도록 유도)
-     const prompt = `
-      다음 제공되는 유튜브 영상 링크의 시각적(영상 화면) 및 청각적(오디오/음성) 내용을 정밀하게 분석해 주세요.
-      영상 링크: ${videoUrl}
+      [자막 내용]
+      ${transcriptText}
 
       사용자가 요리 앱('레시피오')에서 고품질의 레시피를 보고 직접 따라 할 수 있도록, 내용을 분석하여 아래 조건에 맞는 구조화된 JSON 데이터로 정제해 주세요.
 
-      [핵심 필터링 규칙 - 매우 중요]
-      - 영상에 여러 명의 셰프가 나오거나 여러 요리가 동시에 등장(예: 서바이벌 대결, 예능 등)한다면, 자막과 화면에서 비중이 가장 높거나 완성도가 높은 '단 하나의 메인 요리'만 타겟팅해서 레시피를 추출해 줘.
-      - 중간에 인물들의 사담, 리액션, 대결 상황, 중간 예능 자막, 최종 평가 및 시식 내용(예: "맛있다", "누구를 선택한다", "감탄한다" 등)은 레시피 순서(steps)나 설명에 절대 포함하지 마. 오직 순수한 '요리 과정'만 남겨야 해.
+      [핵심 필터링 규칙]
+      - 여러 요리가 등장한다면 비중이 가장 높은 '단 하나의 메인 요리'만 타겟팅하세요.
+      - 리액션, 사담, 시식 평가는 제외하고 오직 순수한 '요리 과정'만 남기세요.
 
       [데이터 정제 조건]
-      1. title: 요리의 특징이 잘 드러나는 직관적이고 깔끔한 제목 (예: "백종원 매콤 제육볶음")
-      2. content: 이 요리에 대한 매력적인 한 줄 소개글 (예: "집에서 불맛을 낼 수 있는 초간단 제육볶음 레시피입니다.")
-      3. video_url: 제공된 원본 영상 주소(${videoUrl})를 그대로 반환해 줘.
-      4. info: 요리 기본 정보 객체
-         - servings: 몇 인분 기준인지 영상을 토대로 추정 (모호하면 "1인분" 또는 "2인분"으로 기본값 설정)
-         - time: 요리에 걸리는 예상 소요 시간 (예: "15분", "30분")
-         - difficulty: 요리 난이도 ("아무나", "초급", "중급", "상급" 중 문맥을 보고 판단하여 선택)
-         - nutrients: 사용된 재료와 분량을 기반으로 요리 전체(또는 1인분 기준)의 대략적인 영양 성분을 영양학적으로 추정해서 숫자로 채워줘. (필요시 소수점 첫째 자리까지 표기)
-           * calories: 칼로리 수치 (kcal 단위, 예: 450.5)
-           * carbs: 탄수화물 양 (g 단위, 예: 35.2)
-           * protein: 단백질 양 (g 단위, 예: 25.0)
-           * fat: 지방 양 (g 단위, 예: 12.4)
-           * fiber: 식이섬유 양 (g 단위, 예: 3.5)
-           * sugar: 당류 양 (g 단위, 예: 8.2)
-           * sodium: 나트륨 양 (mg 단위, 예: 450.0)
-      5. ingredients: 요리에 사용된 재료들의 배열. 단순 이름이 아니라 실제 앱처럼 '이름'과 '계량(정량)'을 분리한 객체 배열로 만들어 줘.
-         - name: 재료 이름 (예: "돼지고기 앞다리살", "고춧가루", "설탕")
-         - amount: 영상에 나온 계량 정보 (예: "300g", "2스푼", "약간", "1/2개"). 정확한 양이 안 나오면 영상 문맥상 알맞은 양을 추정하거나 "적당량"으로 채워줘.
-      6. cooking_tools: 요리에 사용된 조리기구들의 '이름'만 문자열 배열로 추출 (예: ["프라이팬", "궁중팬", "볼", "칼"])
-      7. steps: 실제 사용자가 따라 할 수 있는 명확한 요리 순서 배열.
-         - step_number: 1부터 시작하는 순차적인 정수
-         - description: 해당 단계에서 해야 할 요리 행위를 명확하고 간결한 명령조(~합니다, ~하세요)로 작성. (예: "야채를 손질합니다", "팬에 기름을 두르고 고기를 볶습니다") 
-         - 주객관적인 예능 멘트나 셰프의 이름(예: "최현석 셰프는~")은 빼고 오직 요리 행위 주체 중심으로 서술할 것.
-
-      [반환 형태 예시]
-      {
-        "title": "원팬 토마토 파스타",
-        "content": "냄비 하나로 끝내는 초간단 파스타 레시피입니다.",
-        "video_url": "${videoUrl}",
-        "info": {
-          "servings": "1인분",
-          "time": "15분",
-          "difficulty": "초급",
-          "nutrients": {
-            "calories": 520.5,
-            "carbs": 75.2,
-            "protein": 15.4,
-            "fat": 10.1,
-            "fiber": 4.2,
-            "sugar": 5.0,
-            "sodium": 320.5
-          }
-        },
-        "ingredients": [
-          { "name": "파스타면", "amount": "100g" },
-          { "name": "방울토마토", "amount": "8개" },
-          { "name": "마늘", "amount": "5알" },
-          { "name": "올리브유", "amount": "3큰술" },
-          { "name": "소금", "amount": "약간" }
-        ],
-        "cooking_tools": ["냄비", "칼", "도마"],
-        "steps": [
-          { "step_number": 1, "description": "마늘은 편으로 썰고 방울토마토는 흐르는 물에 씻어 반으로 자릅니다." },
-          { "step_number": 2, "description": "냄비에 올리브유를 두르고 썰어둔 마늘을 넣어 중불에서 향이 날 때까지 볶습니다." }
-        ]
-      }
+      1. title: 요리의 특징이 잘 드러나는 직관적이고 깔끔한 제목
+      2. content: 이 요리에 대한 매력적인 한 줄 소개글
+      3. video_url: "${videoUrl}" (그대로 반환)
+      4. info: { servings, time, difficulty, nutrients: { calories, carbs, protein, fat, fiber, sugar, sodium } }
+      5. ingredients: { "name": "재료명", "amount": "계량" } 객체 배열 (자막에 계량이 없으면 문맥상 추정하거나 "적당량" 처리)
+      6. cooking_tools: 사용된 조리기구들의 이름 문자열 배열 (예: ["프라이팬", "칼"])
+      7. steps: { "step_number": 1, "description": "설명" } 객체 배열 (명령조로 간결하게 작성)
     `;
-      console.log("🔍 [단계 2] Gemini AI에게 유튜브 영상 직접 분석 요청 중...");
-      const result = await model.generateContent(prompt);
-      const responseText = result.response.text();
 
-      // 3. AI가 준 JSON 텍스트를 실제 객체로 변환
-      let aiData: any;
-      try {
-        aiData = JSON.parse(responseText);
-      } catch (parseError) {
-        console.error("❌ AI 응답 JSON 파싱 에러!");
-        throw new BadRequestException('AI 응답을 파싱할 수 없습니다.');
-      }
+    console.log("🔍 Gemini AI에게 실제 자막 기반 레시피 정제 요청 중...");
+    const result = await model.generateContent(prompt);
+    const responseText = result.response.text();
 
-      // 4. 유튜브 공식 썸네일 이미지 주소 조합하기
-      const thumbnailImg = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
-
-      // 5. DTO 매핑
-    const mockDto: CreateRecipeDto = {
-        title: aiData.title,
-        content: aiData.content,
-        thumbnail_img: thumbnailImg,
-        ingredients: aiData.ingredients ? aiData.ingredients.map((i: any) => i.name) : [], 
-        cooking_tools: aiData.cooking_tools || [],
-        steps: aiData.steps || [],
-        // 새로 추가한 DTO 속성에 규격 맞춰 바인딩
-        nutrients: aiData.info?.nutrients || { calories: 0, carbs: 0, protein: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0 }
-      };
-
-      return await this.createRecipe(userId, mockDto);
-    } catch (finalError: any) {
-      console.error("❌ 최종 에러 발생:", finalError.message || finalError);
-      throw finalError;
+    let aiData: any;
+    try {
+      aiData = JSON.parse(responseText);
+    } catch (parseError) {
+      throw new BadRequestException('AI 응답을 파싱할 수 없습니다.');
     }
+
+    const thumbnailImg = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+
+    const mockDto: CreateRecipeDto = {
+      title: aiData.title,
+      content: aiData.content,
+      thumbnail_img: thumbnailImg,
+      ingredients: aiData.ingredients ? aiData.ingredients.map((i: any) => i.name) : [], 
+      cooking_tools: aiData.cooking_tools || [],
+      steps: aiData.steps || [],
+      nutrients: aiData.info?.nutrients || { calories: 0, carbs: 0, protein: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0 }
+    };
+
+    return await this.createRecipe(userId, mockDto);
+  } catch (finalError: any) {
+    console.error("❌ 최종 에러 발생:", finalError.message || finalError);
+    throw finalError;
   }
+}
 
   private extractYoutubeVideoId(url: string): string | null {
     if (!url) return null;
@@ -371,4 +332,160 @@ async findAll(search?: string, includeIngredients?: string[], excludeTools?: str
         .limit(3)
         .getMany();
     }
+
+    async togglePublicStatus(id: number, userId: string) {
+  // 레시피와 작성자(creator) 정보를 함께 조회
+  const recipe = await this.recipeRepository.findOne({
+    where: { id },
+    relations: ['creator'],
+  });
+
+  if (!recipe) throw new NotFoundException('레시피를 찾을 수 없습니다.');
+
+  
+  if (recipe.creator.id !== userId) {
+    throw new BadRequestException('본인이 작성한 레시피만 공개 여부를 변경할 수 있습니다.');
+  }
+
+  // 현재 상태를 반전 (true -> false / false -> true)
+  recipe.is_public = !recipe.is_public;
+
+  await this.recipeRepository.save(recipe);
+
+  return { 
+    recipeId: recipe.id, 
+    is_public: recipe.is_public, 
+    message: recipe.is_public ? '레시피가 전체 공개되었습니다.' : '레시피가 비공개 처리되었습니다.' 
+  };
+}
+
+async findMyRecipes(userId: string) {
+  // 유저가 존재하는지 먼저 검증
+  const user = await this.userRepository.findOne({ where: { id: userId } });
+  if (!user) throw new NotFoundException('유저를 찾을 수 없습니다.');
+
+  return await this.recipeRepository.createQueryBuilder('recipe')
+    .leftJoinAndSelect('recipe.creator', 'creator')
+    .leftJoinAndSelect('recipe.ingredients', 'ingredient')
+    .leftJoinAndSelect('recipe.cooking_tools', 'tool')
+    .select([
+      'recipe.id', 'recipe.title', 'recipe.thumbnail_img', 
+      'recipe.likes_count', 'recipe.created_at', 'recipe.is_public',
+      'recipe.calories', 'recipe.carbs', 'recipe.protein', 'recipe.fat', 'recipe.fiber', 'recipe.sugar', 'recipe.sodium',
+      'creator.id', 'creator.nickname',
+      'ingredient.id', 'ingredient.name',
+      'tool.id', 'tool.name'
+    ])
+    .where('creator.id = :userId', { userId })
+    .orderBy('recipe.created_at', 'DESC')
+    .getMany();
+}
+// =========================================================================
+// 9. 레시피 수정 (작성자 검증 포함)
+// =========================================================================
+async updateRecipe(id: number, userId: string, dto: CreateRecipeDto) {
+  // 수정할 레시피와 작성자 정보를 가져옴
+  const recipe = await this.recipeRepository.findOne({
+    where: { id },
+    relations: ['creator'],
+  });
+
+  if (!recipe) throw new NotFoundException('레시피를 찾을 수 없습니다.');
+
+  if (recipe.creator.id !== userId) {
+    throw new BadRequestException('본인이 작성한 레시피만 수정할 수 있습니다.');
+  }
+
+  // 1. 새로운 재료(Ingredient) 확인 및 생성/매핑
+  const ingredientEntities = await Promise.all(
+    dto.ingredients.map(async (ing: any) => {
+      const name = typeof ing === 'string' ? ing : ing.name;
+      let ingredient = await this.ingredientRepository.findOne({ where: { name } });
+      if (!ingredient) {
+        ingredient = this.ingredientRepository.create({ name });
+        await this.ingredientRepository.save(ingredient);
+      }
+      return ingredient;
+    }),
+  );
+
+  // 2. 새로운 조리기구(CookingTool) 확인 및 생성/매핑
+  const toolEntities = await Promise.all(
+    dto.cooking_tools.map(async (name) => {
+      let tool = await this.cookingToolRepository.findOne({ where: { name } });
+      if (!tool) {
+        tool = this.cookingToolRepository.create({ name });
+        await this.cookingToolRepository.save(tool);
+      }
+      return tool;
+    }),
+  );
+
+  // 3. 변경된 데이터 덮어씌우기
+  if (dto.steps && dto.steps.length > 0) {
+    recipe.steps = dto.steps.map((step) => {
+      return {
+        step_number: step.step_number,
+        description: step.description,
+        step_img: step.step_img ?? '', // step_img가 옵셔널이므로 없으면 빈 문자열 처리
+      } as any; 
+    });
+  }
+
+  // 4. 영양성분 정보도 DTO에 담겨왔다면 갱신 (없으면 기존 값 유지)
+  if (dto.nutrients) {
+    recipe.calories = dto.nutrients.calories !== undefined ? dto.nutrients.calories : (recipe.calories ?? 0);
+    recipe.carbs = dto.nutrients.carbs !== undefined ? dto.nutrients.carbs : (recipe.carbs ?? 0);
+    recipe.protein = dto.nutrients.protein !== undefined ? dto.nutrients.protein : (recipe.protein ?? 0);
+    recipe.fat = dto.nutrients.fat !== undefined ? dto.nutrients.fat : (recipe.fat ?? 0);
+    recipe.fiber = dto.nutrients.fiber !== undefined ? dto.nutrients.fiber : (recipe.fiber ?? 0);
+    recipe.sugar = dto.nutrients.sugar !== undefined ? dto.nutrients.sugar : (recipe.sugar ?? 0);
+    recipe.sodium = dto.nutrients.sodium !== undefined ? dto.nutrients.sodium : (recipe.sodium ?? 0);
+  }
+
+  return await this.recipeRepository.save(recipe);
+}
+
+// =========================================================================
+// 10. 레시피 삭제 (작성자 검증 포함)
+// =========================================================================
+async removeRecipe(id: number, userId: string) {
+  const recipe = await this.recipeRepository.findOne({
+    where: { id },
+    relations: ['creator'],
+  });
+
+  if (!recipe) throw new NotFoundException('레시피를 찾을 수 없습니다.');
+
+  if (recipe.creator.id !== userId) {
+    throw new BadRequestException('본인이 작성한 레시피만 삭제할 수 있습니다.');
+  }
+
+  // 레시피 완전 삭제 (Cascade 설정에 의해 하위 steps 등도 함께 지워집니다)
+  await this.recipeRepository.remove(recipe);
+
+  return { recipeId: id, message: '레시피가 성공적으로 삭제되었습니다.' };
+}
+async findLikedRecipes(userId: string) {
+  // 1. 유저 존재 여부 먼저 깔끔하게 검증
+  const user = await this.userRepository.findOne({ where: { id: userId } });
+  if (!user) throw new NotFoundException('유저를 찾을 수 없습니다.');
+
+  // 2. QueryBuilder로 유저가 좋아요한 레시피만 필터링해서 셀렉트
+  return await this.recipeRepository.createQueryBuilder('recipe')
+    .innerJoin('recipe.likedByUsers', 'likedUser', 'likedUser.id = :userId', { userId }) // 👈 여기가 핵심! 좋아요 누른 유저 테이블과 조인
+    .leftJoinAndSelect('recipe.creator', 'creator')
+    .leftJoinAndSelect('recipe.ingredients', 'ingredient')
+    .leftJoinAndSelect('recipe.cooking_tools', 'tool')
+    .select([
+      'recipe.id', 'recipe.title', 'recipe.thumbnail_img', 
+      'recipe.likes_count', 'recipe.created_at', 'recipe.is_public',
+      'recipe.calories', 'recipe.carbs', 'recipe.protein', 'recipe.fat', 'recipe.fiber', 'recipe.sugar', 'recipe.sodium',
+      'creator.id', 'creator.nickname',
+      'ingredient.id', 'ingredient.name',
+      'tool.id', 'tool.name'
+    ])
+    .orderBy('recipe.created_at', 'DESC') // 최신 찜한 순(또는 등록순) 정렬
+    .getMany();
+}
 }
