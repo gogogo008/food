@@ -2,6 +2,7 @@ import { Controller, Post, Get, Patch, Body, Param, Query, HttpCode, HttpStatus,
 import { RecipesService } from './recipes.service';
 import { CreateRecipeDto } from '../Dto/create-recipe.dto';
 import { YoutubeRecipeDto } from '../Dto/youtube-recipe.dto';
+import { UpdateVisibilityDto } from '../Dto/update-visibility.dto';
 
 @Controller('recipes')
 export class RecipesController {
@@ -48,12 +49,14 @@ export class RecipesController {
   }
 
   // [공개 / 비공개 여부 전환 토글] PATCH /recipes/:id/public/:userId
-  @Patch(':id/public/:userId')
-  async toggleRecipePublic(
+  // src/recipes/recipes.controller.ts
+  @Patch(':id/visibility/:userId')
+  async updateVisibility(
     @Param('id') id: number,
     @Param('userId') userId: string,
+    @Body() dto: UpdateVisibilityDto, // Body 추가
   ) {
-    return await this.recipesService.togglePublicStatus(id, userId);
+    return await this.recipesService.updateVisibility(id, userId, dto.is_public);
   }
 
   // [레시피 좋아요 토글] POST /recipes/:id/like/:userId

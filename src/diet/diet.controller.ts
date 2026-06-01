@@ -1,5 +1,5 @@
 // src/diet/diet.controller.ts
-import { Controller, Post, Get, UseInterceptors, UploadedFile, BadRequestException, Body, Param, Query } from '@nestjs/common';
+import { Controller, Post, Get, UseInterceptors, UploadedFile, BadRequestException, Body, Param, Query, Delete } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { DietService } from './diet.service'; 
 import { SaveMealLogDto } from '../Dto/meal-log.dto';
@@ -27,7 +27,14 @@ export class DietController {
   ) {
     return await this.dietService.saveMealLog(userId, saveMealLogDto);
   }
-
+  
+  @Delete(':id')
+  async deleteLog(
+    @Param('id') id: number, 
+    @Query('userId') userId: string 
+  ) {
+    return await this.dietService.deleteMealLog(userId, id);
+  }
   // 3. 홈 화면 대시보드 통합 데이터 조회 API 
   @Get('dashboard/:userId') // 
   async getHomeDashboard(@Param('userId') userId: string) {

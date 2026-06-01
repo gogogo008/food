@@ -162,6 +162,25 @@ export class DietService {
     };
   }
 
+    async deleteMealLog(userId: string, logId: number) {
+    // 1. 해당 유저가 작성한 로그가 맞는지 확인 (본인 인증)
+    const log = await this.mealLogRepository.findOne({
+      where: { id: logId, userId: userId },
+    });
+
+    if (!log) {
+      throw new NotFoundException('삭제할 식단 기록을 찾을 수 없습니다.');
+    }
+
+    // 2. 삭제 실행
+    await this.mealLogRepository.remove(log);
+
+    return {
+      success: true,
+      message: '식단 기록이 성공적으로 삭제되었습니다.',
+    };
+  }
+
   // 4. 홈 화면 대시보드 데이터 조회
   async getHomeDashboard(userId: string) {
     const user = await this.userRepository.findOne({ where: { id: userId } });
